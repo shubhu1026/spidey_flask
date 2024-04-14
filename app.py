@@ -1,36 +1,16 @@
-from unittest import result
-from flask import Flask, jsonify, render_template, request
-
+from flask import Flask, render_template, request, jsonify
+from tensorflow.keras.models import load_model
+import json
+from PIL import Image
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
 
-from keras.preprocessing.image import load_img
-from keras.preprocessing.image import load_img
-from keras.preprocessing.image import img_to_array
-from keras.applications.imagenet_utils import preprocess_input
-from keras.applications.vgg16 import decode_predictions
-
+# Initialize Flask app
 app = Flask(__name__)
 
-@app.route('/', methods=['GET'])
-def hello_world():
-    return render_template('index.html')
+# Load the trained model
+model = load_model('model/plant_disease_prediction_model.h5')
 
-@app.route('/api/', methods=['POST'])
-def predict():
-    imagefile = request.files['imagefile']
-    image_path = "./images/img.jpeg"
-    imagefile.save(image_path)
-
-    model = keras.models.load_model("./model/plant_disease_prediction_model.h5")
-    img = tf.keras.utils.load_img(image_path, target_size=(256,256))
-    i = tf.keras.preprocessing.image.img_to_array(img)
-    im = preprocess_input(i)
-    img = np.expand_dims(im, axis = 0)
-    pred = np.argmax(model.predict(img))
-
-    predictions = {0: 'Apple Scab',
+predictions = {0: 'Apple Scab',
     1: 'Apple Black Rot',
     2: 'Cedar Apple Rust',
     3: 'Apple Healthy',
@@ -70,9 +50,41 @@ def predict():
     37: 'Tomato Healthy'
     }
 
-    result = pred
+# Function to preprocess image
+def preprocess_image(image_path):
+    img = Image.open(image_path)
+    img = img.resize((224, 224))
+    img_array = np.array(img)
+    img_array = img_array.astype('float32') / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+    return img_array
 
-    return jsonify(Result = result)
+# Function to predict image class
+def predict_image_class(image_path):
+    preprocessed_img = preprocess_image(image_path)
+    predictions = model.predict(preprocessed_img)
+    predicted_class_index = np.argmax(predictions, axis=1)[0]
+    # predicted_class_name = predictions[predicted_class_index]
+    # return predicted_class_index
+    return int(predicted_class_index)
+
+# Home page
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+# Prediction endpoint
+@app.route('/predict', methods=['POST'])
+def predict():
+    if request.method == 'POST':
+        file = request.files['imagefile']
+        if file:
+            image_path = 'images/' + file.filename
+            file.save(image_path)
+            predicted_class_index = predict_image_class(image_path)
+            predicted_class_name = predictions[predicted_class_index]
+            return jsonify({'prediction': predicted_class_name})
+    return jsonify({'error': 'No file uploaded'})
 
 if __name__ == '__main__':
-    app.run(debug= True)
+    app.run(debug=True)
